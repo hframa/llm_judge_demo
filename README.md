@@ -27,7 +27,7 @@ This is a multimodal evaluation demo application designed to run in a containeri
 - **Input Limits**: 1000-word limit for text and a 20MB limit for video.
 
 ## Future Improvements
-- **Micro-services Architecture**: Introduce evaluation tracing services.
+- **Micro-services Architecture**: Introduce evaluation and tracing services.
 - **Fine-grained Analysis**: Implement timestamp-specific markers in video analysis to point out exactly where crucial signals are detected.
 - **Asynchronous Workflows**: Move video processing to a background task queue to handle larger files without blocking the user interface.
 - **Batch Processing**: Add the ability to upload multiple files or a URL list for high-volume content auditing.
