@@ -52,5 +52,39 @@ class TestMockClientMultimodal(unittest.TestCase):
         )
         self.assertEqual(res.total_tokens, 5)
 
+    def test_video_state_transition_polling(self):
+        # Test the new polling behavior in MockClient
+        video = self.client.files.upload(file="test.mp4")
+        self.assertEqual(video.state.name, "PROCESSING")
+        
+        # First call to get() should still be PROCESSING
+        video = self.client.files.get(name=video.name)
+        self.assertEqual(video.state.name, "PROCESSING")
+        
+        # Second call to get() should transition to ACTIVE (based on MockFiles logic)
+        video = self.client.files.get(name=video.name)
+        self.assertEqual(video.state.name, "ACTIVE")
+
+    def test_file_deletion(self):
+        file = self.client.files.upload(file="test.txt")
+        name = file.name
+        self.client.files.delete(name=name)
+        
+        # Trying to get a deleted file should raise an exception
+        with self.assertRaises(Exception):
+            self.client.files.get(name=name)
+
+    def test_upload_file_like_object(self):
+        # Simulating Streamlit UploadedFile which has a .name attribute
+        class MockUploadedFile:
+            def __init__(self, name):
+                self.name = name
+        
+        uploaded_file = MockUploadedFile("my_video.mp4")
+        file = self.client.files.upload(file=uploaded_file)
+        
+        self.assertTrue(file.name.endswith("my_video.mp4"))
+        self.assertEqual(file.mime_type, "video/mp4")
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,6 +1,7 @@
 import streamlit as st
 import os
 import json
+import time
 from dotenv import load_dotenv
 from google import genai
 from google.genai.types import GenerateContentConfig
@@ -67,10 +68,30 @@ else:
 
     def run_evaluation(content, is_video=False):
         """Business logic for content evaluation."""
+        uploaded_file = None
         try:
             with st.spinner("Analyzing content..."):
                 if is_video:
-                    uploaded_file = st.session_state.client.files.upload(file=content.name)
+                    # Pass the file object directly for upload
+                    st.info("Uploading video to Gemini File API...")
+                    uploaded_file = st.session_state.client.files.upload(
+                        file=content,
+                        config={"mime_type": content.type}
+                    )
+                    
+                    # Wait for video processing to complete
+                    # Video must be in 'ACTIVE' state before use
+                    status_text = st.empty()
+                    while uploaded_file.state.name == "PROCESSING":
+                        status_text.info(f"Processing video: {uploaded_file.name} (State: {uploaded_file.state.name})")
+                        time.sleep(5)
+                        uploaded_file = st.session_state.client.files.get(name=uploaded_file.name)
+                    
+                    if uploaded_file.state.name != "ACTIVE":
+                        st.error(f"Video processing failed with state: {uploaded_file.state.name}")
+                        return
+
+                    status_text.success("Video processed and ready for analysis.")
                     prompt = "Analyze this video and determine if it was created by an AI or a human. Return your response ONLY in the specified JSON format."
                     contents = [prompt, uploaded_file]
                 else:
@@ -90,6 +111,14 @@ else:
                 }
         except Exception as e:
             st.error(f"Analysis failed: {str(e)}")
+        finally:
+            # Cleanup: Delete the file from Google's servers after use to respect quota
+            if uploaded_file and is_video:
+                try:
+                    st.session_state.client.files.delete(name=uploaded_file.name)
+                    st.sidebar.success(f"Cleaned up file: {uploaded_file.name}")
+                except Exception as cleanup_err:
+                    st.sidebar.warning(f"Failed to cleanup file: {str(cleanup_err)}")
 
     # Tabs for different input types
     tab_text, tab_video = st.tabs(["📝 Text Evaluation", "🎬 Video Evaluation"])

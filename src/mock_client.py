@@ -26,10 +26,12 @@ class MockResponse:
         self.usage_metadata = MockUsageMetadata(prompt_tokens, candidate_tokens)
 
 class MockFile:
-    def __init__(self, uri, mime_type):
+    def __init__(self, name, uri, mime_type):
+        self.name = name
         self.uri = uri
         self.mime_type = mime_type
-        self.state = type('State', (), {'name': 'ACTIVE'})
+        # Create an object with a 'name' attribute that can be updated
+        self.state = type('State', (), {'name': 'PROCESSING'})()
 
 def _get_sys_inst(config):
     """Helper to extract system instruction from dict or object."""
@@ -169,20 +171,66 @@ class MockChats:
         return MockChat(model, config=kwargs.get('config'))
 
 class MockFiles:
+    def __init__(self):
+        self._files = {}
+        self._get_calls = {} # Track calls per file to simulate processing time
+
     def upload(self, file, **kwargs):
-        mime_type = "application/octet-stream"
-        if isinstance(file, str):
-            ext = os.path.splitext(file)[1].lower()
+        # Extract filename if 'file' is a file-like object (e.g. Streamlit's UploadedFile)
+        # or just use the string if it's already a path.
+        filename = getattr(file, 'name', str(file))
+        name = f"files/{os.path.basename(filename)}"
+        
+        # Check if mime_type is provided in config (as per the real SDK)
+        config = kwargs.get('config', {})
+        mime_type = config.get('mime_type')
+        
+        if not mime_type:
+            mime_type = "application/octet-stream"
+            ext = os.path.splitext(filename)[1].lower()
             if ext in ['.png', '.jpg', '.jpeg', '.webp']:
                 mime_type = f"image/{ext[1:] if ext != '.jpg' else 'jpeg'}"
             elif ext in ['.mp4', '.mpeg', '.mov', '.avi']:
                 mime_type = f"video/{ext[1:] if ext != '.avi' else 'x-msvideo'}"
         
-        return MockFile(uri=f"mock://{file}", mime_type=mime_type)
+        mock_file = MockFile(name=name, uri=f"mock://{name}", mime_type=mime_type)
+        # For non-video files, start as ACTIVE
+        if not mime_type.startswith('video/'):
+            mock_file.state.name = "ACTIVE"
+            
+        self._files[name] = mock_file
+        self._get_calls[name] = 0
+        return mock_file
+
+    def delete(self, name):
+        """Mock deletion of a file."""
+        if name in self._files:
+            del self._files[name]
+        if name in self._get_calls:
+            del self._get_calls[name]
+        return True
 
     def get(self, name):
-        # Default mock behavior
-        return MockFile(uri=f"mock://{name}", mime_type="video/mp4")
+        if name not in self._files:
+            raise Exception(f"File {name} not found")
+            
+        mock_file = self._files[name]
+        
+        # Simulate processing for videos: transition to ACTIVE after a couple of 'get' calls
+        if mock_file.state.name == "PROCESSING":
+            self._get_calls[name] += 1
+            if self._get_calls[name] >= 2:
+                mock_file.state.name = "ACTIVE"
+                
+        return mock_file
+
+    def delete(self, name):
+        if name in self._files:
+            del self._files[name]
+            if name in self._get_calls:
+                del self._get_calls[name]
+        else:
+            print(f"Warning: Mock delete failed, file {name} not found.")
 
 class MockClient:
     def __init__(self, api_key=None):

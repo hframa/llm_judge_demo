@@ -14,10 +14,23 @@ class LimitedChat:
         contents = [*history, message]
         
         try:
+            # Extract system_instruction for count_tokens if present in config
+            count_kwargs = {}
+            if 'config' in kwargs:
+                # GenerateContentConfig is not compatible with count_tokens directly in some SDK versions
+                # We extract the relevant parts for token counting
+                sys_inst = getattr(kwargs['config'], 'system_instruction', None)
+                if sys_inst:
+                    # In newer SDKs we might use CountTokensConfig, but often passing 
+                    # system_instruction as a kwarg or in a simplified config works.
+                    # To be safe and compatible with our MockClient and the real SDK:
+                    from google.genai.types import CountTokensConfig
+                    count_kwargs['config'] = CountTokensConfig(system_instruction=sys_inst)
+
             token_count_resp = self._client.models.count_tokens(
                 model=self._model,
                 contents=contents,
-                **kwargs
+                **count_kwargs
             )
             prompt_tokens = token_count_resp.total_tokens
         except Exception as e:
@@ -49,10 +62,17 @@ class LimitedModels:
 
     def generate_content(self, model, contents, **kwargs):
         try:
+            count_kwargs = {}
+            if 'config' in kwargs:
+                sys_inst = getattr(kwargs['config'], 'system_instruction', None)
+                if sys_inst:
+                    from google.genai.types import CountTokensConfig
+                    count_kwargs['config'] = CountTokensConfig(system_instruction=sys_inst)
+
             token_count_resp = self._client.models.count_tokens(
                 model=model,
                 contents=contents,
-                **kwargs
+                **count_kwargs
             )
             prompt_tokens = token_count_resp.total_tokens
         except Exception:
